@@ -1,5 +1,6 @@
 package server;
 
+import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
@@ -8,6 +9,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
+@Component
 public class TextEditorWebSocketHandler extends TextWebSocketHandler {
 
     // 연결된 모든 클라이언트 세션 저장
