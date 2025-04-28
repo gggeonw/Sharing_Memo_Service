@@ -18,13 +18,15 @@ public class TextEditorWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         sessions.add(session);
-        broadcast("Client connected: " + session.getId());
+        System.out.println("[Server] New client connected: " + session.getId());
+        broadcast("[Client] Client connected: " + session.getId());
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, org.springframework.web.socket.CloseStatus status) throws Exception {
         sessions.remove(session);
-        broadcast("Client disconnected: " + session.getId());
+        System.out.println("[Server] Client disconnected: " + session.getId());
+        broadcast("[Client] Client disconnected: " + session.getId());
     }
 
     @Override
