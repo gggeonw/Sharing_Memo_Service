@@ -1,8 +1,7 @@
 package server;
 
 import org.springframework.stereotype.Component;
-import org.springframework.web.socket.TextMessage;
-import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.util.Collections;
@@ -12,36 +11,28 @@ import java.util.Set;
 @Component
 public class TextEditorWebSocketHandler extends TextWebSocketHandler {
 
-    // 연결된 모든 클라이언트 세션 저장
-    private static final Set<WebSocketSession> sessions = Collections.synchronizedSet(new HashSet<>());
+    private final Set<WebSocketSession> sessions = Collections.synchronizedSet(new HashSet<>());
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         sessions.add(session);
         System.out.println("[Server] Client connected: " + session.getId());
-        broadcast("[Client] Client connected: " + session.getId());
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession session, org.springframework.web.socket.CloseStatus status) throws Exception {
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         sessions.remove(session);
         System.out.println("[Server] Client disconnected: " + session.getId());
-        broadcast("[Client] Client disconnected: " + session.getId());
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        // 현재는 텍스트 편집 기능을 안하니까 별 처리 안함
-    }
+        System.out.println("[Server] Received message: " + message.getPayload());
 
-    private void broadcast(String message) {
-        synchronized (sessions) {
-            for (WebSocketSession sess : sessions) {
-                try {
-                    sess.sendMessage(new TextMessage(message));
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
+        // 받은 메시지를 모든 클라이언트에게 broadcast
+        for (WebSocketSession s : sessions) {
+            if (s.isOpen()) {
+                s.sendMessage(new TextMessage(message.getPayload()));
             }
         }
     }
