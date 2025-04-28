@@ -14,6 +14,7 @@ public class TextEditorClient {
 
     private static Session session;
     private static JTextArea textArea; // 텍스트 에디터 컴포넌트 전역 변수
+    private static String mySessionId;
 
     public static void main(String[] args) {
         WebSocketContainer container = ContainerProvider.getWebSocketContainer();
@@ -33,18 +34,36 @@ public class TextEditorClient {
 
     @OnMessage
     public void onMessage(String message) {
-        System.out.println("[Client] Server broadcast: " + message);
+        System.out.println("[Client] Server says: " + message);
 
-        SwingUtilities.invokeLater(() -> {
-            if (textArea != null) {
-                textArea.setText(message);
+        try {
+            // JSON 파싱
+            org.json.JSONObject json = new org.json.JSONObject(message);
+            String senderId = json.getString("senderId");
+            String text = json.getString("text");
+
+            // 내 자신이 보낸 거면 무시
+            if (senderId.equals(mySessionId)) {
+                System.out.println("[Client] Ignored my own message.");
+                return;
             }
-        });
+
+            // 다른 클라이언트가 보낸 거면 화면 업데이트
+            SwingUtilities.invokeLater(() -> {
+                if (textArea != null) {
+                    textArea.setText(text);
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
+
 
     @OnOpen
     public void onOpen(Session session) {
         System.out.println("[Client] Session opened: " + session.getId());
+        mySessionId = session.getId(); // 내 세션ID 저장
     }
 
     @OnClose
@@ -108,11 +127,13 @@ public class TextEditorClient {
         if (session != null && session.isOpen()) {
             try {
                 String currentText = textArea.getText();
-                session.getBasicRemote().sendText(currentText);
+                String message = "{\"senderId\":\"" + mySessionId + "\",\"text\":\"" + currentText + "\"}";
+                session.getBasicRemote().sendText(message);
                 System.out.println("[Client] Sent updated text to server.");
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
     }
+
 }
