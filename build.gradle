@@ -25,6 +25,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'javax.websocket:javax.websocket-api:1.1'
     implementation 'org.glassfish.tyrus.bundles:tyrus-standalone-client:1.17'
+    implementation 'org.json:json:20240303'
 }
 
 tasks.withType(JavaCompile).configureEach {

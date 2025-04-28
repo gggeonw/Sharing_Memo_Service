@@ -29,10 +29,9 @@ public class TextEditorWebSocketHandler extends TextWebSocketHandler {
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         System.out.println("[Server] Received message: " + message.getPayload());
 
-        // 받은 메시지를 모든 클라이언트에게 broadcast
         for (WebSocketSession s : sessions) {
             if (s.isOpen()) {
-                s.sendMessage(new TextMessage(message.getPayload()));
+                s.sendMessage(message); // 수정 필요 없음
             }
         }
     }
