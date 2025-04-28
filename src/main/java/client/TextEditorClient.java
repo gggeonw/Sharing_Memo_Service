@@ -17,6 +17,7 @@ public class TextEditorClient {
     private static Session session;
     private static JTextArea textArea;
     private static String mySessionId;
+    private static DocumentListener documentListener;
 
     public static void main(String[] args) {
         WebSocketContainer container = ContainerProvider.getWebSocketContainer();
@@ -24,7 +25,7 @@ public class TextEditorClient {
 
         try {
             session = container.connectToServer(TextEditorClient.class, URI.create(serverUri));
-            System.out.println("Connected to server!");
+            System.out.println("[Client] Connected to server!");
 
             SwingUtilities.invokeLater(TextEditorClient::createAndShowGUI);
 
@@ -51,7 +52,7 @@ public class TextEditorClient {
 
     @OnMessage
     public void onMessage(String message) {
-        System.out.println("[Client] Received message: " + message);
+        //System.out.println("[Client] Received message: " + message);
 
         try {
             JSONObject json = new JSONObject(message);
@@ -81,7 +82,14 @@ public class TextEditorClient {
 
                 SwingUtilities.invokeLater(() -> {
                     if (textArea != null) {
-                        textArea.setText(text);
+                        try {
+                            // 👇 문서 리스너 일시 제거
+                            textArea.getDocument().removeDocumentListener(documentListener);
+                            textArea.setText(text);
+                        } finally {
+                            // 👇 문서 리스너 다시 추가
+                            textArea.getDocument().addDocumentListener(documentListener);
+                        }
                     }
                 });
             }
@@ -101,8 +109,7 @@ public class TextEditorClient {
 
         frame.add(scrollPane, BorderLayout.CENTER);
 
-        // 텍스트 수정 감지
-        textArea.getDocument().addDocumentListener(new DocumentListener() {
+        documentListener = new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
                 sendTextToServer();
@@ -115,9 +122,11 @@ public class TextEditorClient {
 
             @Override
             public void changedUpdate(DocumentEvent e) {
-                // (주로 스타일 변경인데 JTextArea에서는 거의 안 씀)
+                // 보통 스타일 변경
             }
-        });
+        };
+        textArea.getDocument().addDocumentListener(documentListener);
+
 
         // 창 닫을 때 세션 끊기
         frame.addWindowListener(new WindowAdapter() {
