@@ -9,11 +9,13 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.net.URI;
 
+import org.json.JSONObject;
+
 @ClientEndpoint
 public class TextEditorClient {
 
     private static Session session;
-    private static JTextArea textArea; // 텍스트 에디터 컴포넌트 전역 변수
+    private static JTextArea textArea;
     private static String mySessionId;
 
     public static void main(String[] args) {
@@ -24,7 +26,6 @@ public class TextEditorClient {
             session = container.connectToServer(TextEditorClient.class, URI.create(serverUri));
             System.out.println("Connected to server!");
 
-            // 서버 연결 성공 시 Swing GUI 띄우기
             SwingUtilities.invokeLater(TextEditorClient::createAndShowGUI);
 
         } catch (Exception e) {
@@ -32,38 +33,10 @@ public class TextEditorClient {
         }
     }
 
-    @OnMessage
-    public void onMessage(String message) {
-        System.out.println("[Client] Server says: " + message);
-
-        try {
-            // JSON 파싱
-            org.json.JSONObject json = new org.json.JSONObject(message);
-            String senderId = json.getString("senderId");
-            String text = json.getString("text");
-
-            // 내 자신이 보낸 거면 무시
-            if (senderId.equals(mySessionId)) {
-                System.out.println("[Client] Ignored my own message.");
-                return;
-            }
-
-            // 다른 클라이언트가 보낸 거면 화면 업데이트
-            SwingUtilities.invokeLater(() -> {
-                if (textArea != null) {
-                    textArea.setText(text);
-                }
-            });
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-
     @OnOpen
     public void onOpen(Session session) {
         System.out.println("[Client] Session opened: " + session.getId());
-        mySessionId = session.getId(); // 내 세션ID 저장
+        mySessionId = session.getId(); // 내 세션 ID 저장
     }
 
     @OnClose
@@ -76,6 +49,48 @@ public class TextEditorClient {
         System.err.println("[Client] Error occurred: " + throwable.getMessage());
     }
 
+    @OnMessage
+    public void onMessage(String message) {
+        System.out.println("[Client] Received message: " + message);
+
+        try {
+            JSONObject json = new JSONObject(message);
+
+            String type = json.optString("type", "text"); // 기본값 text
+
+            if (type.equals("system")) {
+                // 시스템 메시지 처리
+                String event = json.getString("event");
+                String clientId = json.getString("clientId");
+
+                if (event.equals("connected")) {
+                    System.out.println("[Client] Client connected: " + clientId);
+                } else if (event.equals("disconnected")) {
+                    System.out.println("[Client] Client disconnected: " + clientId);
+                }
+            } else {
+                // 텍스트 메시지 처리
+                String senderId = json.getString("senderId");
+                String text = json.getString("text");
+
+                // 내가 보낸 메시지는 무시
+                if (senderId.equals(mySessionId)) {
+                    System.out.println("[Client] Ignored my own message.");
+                    return;
+                }
+
+                SwingUtilities.invokeLater(() -> {
+                    if (textArea != null) {
+                        textArea.setText(text);
+                    }
+                });
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private static void createAndShowGUI() {
         JFrame frame = new JFrame("Shared Text Editor");
         frame.setSize(600, 400);
@@ -86,7 +101,7 @@ public class TextEditorClient {
 
         frame.add(scrollPane, BorderLayout.CENTER);
 
-        // 텍스트 변경 감지
+        // 텍스트 수정 감지
         textArea.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
@@ -100,7 +115,7 @@ public class TextEditorClient {
 
             @Override
             public void changedUpdate(DocumentEvent e) {
-                // 보통 스타일 변경일 때 호출되는데 JTextArea는 거의 안 씀
+                // (주로 스타일 변경인데 JTextArea에서는 거의 안 씀)
             }
         });
 
@@ -111,7 +126,7 @@ public class TextEditorClient {
                 if (session != null && session.isOpen()) {
                     try {
                         session.close();
-                        System.out.println("Disconnected from server (GUI closed).");
+                        System.out.println("[Client] Disconnected from server (GUI closed).");
                     } catch (Exception ex) {
                         ex.printStackTrace();
                     }
@@ -122,18 +137,20 @@ public class TextEditorClient {
         frame.setVisible(true);
     }
 
-    // 서버로 텍스트 보내는 메소드
     private static void sendTextToServer() {
         if (session != null && session.isOpen()) {
             try {
                 String currentText = textArea.getText();
-                String message = "{\"senderId\":\"" + mySessionId + "\",\"text\":\"" + currentText + "\"}";
-                session.getBasicRemote().sendText(message);
+                JSONObject json = new JSONObject();
+                json.put("type", "text");
+                json.put("senderId", mySessionId);
+                json.put("text", currentText);
+
+                session.getBasicRemote().sendText(json.toString());
                 System.out.println("[Client] Sent updated text to server.");
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
     }
-
 }
