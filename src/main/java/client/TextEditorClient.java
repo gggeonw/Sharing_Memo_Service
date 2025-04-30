@@ -21,7 +21,7 @@ public class TextEditorClient {
 
     public static void main(String[] args) {
         WebSocketContainer container = ContainerProvider.getWebSocketContainer();
-        String serverUri = "ws://192.168.106.117:8080/ws/text-editor"; // 서버 주소
+        String serverUri = "ws://192.168.105.190:8080/ws/text-editor"; // 서버 주소
 
         try {
             session = container.connectToServer(TextEditorClient.class, URI.create(serverUri));
