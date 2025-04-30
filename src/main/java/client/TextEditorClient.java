@@ -8,142 +8,174 @@ import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.json.JSONObject;
 
 @ClientEndpoint
 public class TextEditorClient {
-
     private static Session session;
     private static JTextArea textArea;
     private static String mySessionId;
+    private static String myUsername;
     private static DocumentListener documentListener;
 
+    // 사용자별 커서 표시용 맵
+    private static final Map<String, JLabel> userCursors = new HashMap<>();
+    private static final Map<String, Integer> userCaretPos = new HashMap<>();
+    private static final Map<String, String> userNames = new HashMap<>();
+
+    private static JLayeredPane layeredPane;
+
     public static void main(String[] args) {
-        WebSocketContainer container = ContainerProvider.getWebSocketContainer();
-        String serverUri = "ws://192.168.105.190:8080/ws/text-editor"; // 서버 주소
+        SwingUtilities.invokeLater(TextEditorClient::showLoginGUI);
+    }
 
+    private static void showLoginGUI() {
+        JFrame loginFrame = new JFrame("Login");
+        loginFrame.setSize(300, 120);
+        loginFrame.setLayout(new FlowLayout());
+
+        JTextField userIdField = new JTextField(20);
+        JButton loginButton = new JButton("Connect");
+
+        loginFrame.add(new JLabel("Enter your name:"));
+        loginFrame.add(userIdField);
+        loginFrame.add(loginButton);
+
+        loginFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        loginFrame.setLocationRelativeTo(null);
+        loginFrame.setVisible(true);
+
+        loginButton.addActionListener(e -> {
+            String userId = userIdField.getText().trim();
+            if (!userId.isEmpty()) {
+                myUsername = userId;
+                try {
+                    WebSocketContainer container = ContainerProvider.getWebSocketContainer();
+                    URI uri = new URI("ws://localhost:8080/ws/text-editor?userId=" + userId);
+                    session = container.connectToServer(TextEditorClient.class, uri);
+                    loginFrame.dispose();
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+    }
+
+    @OnOpen
+    public void onOpen(Session session) {
+        mySessionId = session.getId();
+        SwingUtilities.invokeLater(TextEditorClient::createAndShowGUI);
+
+        // 커서 위치 전송 주기 설정
+        new Timer(300, e -> sendCaretPosition()).start();
+    }
+
+    @OnMessage
+    public void onMessage(String message) {
         try {
-            session = container.connectToServer(TextEditorClient.class, URI.create(serverUri));
-            System.out.println("[Client] Connected to server!");
+            JSONObject json = new JSONObject(message);
+            String type = json.optString("type", "text");
 
-            SwingUtilities.invokeLater(TextEditorClient::createAndShowGUI);
+            if (type.equals("cursor")) {
+                String senderId = json.getString("senderId");
+                if (senderId.equals(mySessionId)) return;
 
+                int caret = json.getInt("caret");
+                String name = json.getString("username");
+
+                userCaretPos.put(senderId, caret);
+                userNames.put(senderId, name);
+
+                SwingUtilities.invokeLater(() -> updateOtherCursors());
+
+            } else if (type.equals("text")) {
+                String senderId = json.getString("senderId");
+                if (senderId.equals(mySessionId)) return;
+
+                String text = json.getString("text");
+
+                SwingUtilities.invokeLater(() -> {
+                    try {
+                        int caret = textArea.getCaretPosition();
+                        textArea.getDocument().removeDocumentListener(documentListener);
+                        textArea.setText(text);
+                        textArea.setCaretPosition(Math.min(caret, text.length()));
+                    } finally {
+                        textArea.getDocument().addDocumentListener(documentListener);
+                    }
+                });
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    @OnOpen
-    public void onOpen(Session session) {
-        System.out.println("[Client] Session opened: " + session.getId());
-        mySessionId = session.getId(); // 내 세션 ID 저장
-    }
-
-    @OnClose
-    public void onClose(Session session, CloseReason closeReason) {
-        System.out.println("[Client] Session closed: " + session.getId() + " Reason: " + closeReason);
-    }
-
-    @OnError
-    public void onError(Session session, Throwable throwable) {
-        System.err.println("[Client] Error occurred: " + throwable.getMessage());
-    }
-
-    @OnMessage
-    public void onMessage(String message) {
-        //System.out.println("[Client] Received message: " + message);
-
-        try {
-            JSONObject json = new JSONObject(message);
-
-            String type = json.optString("type", "text"); // 기본값 text
-
-            if (type.equals("system")) {
-                // 시스템 메시지 처리
-                String event = json.getString("event");
-                String clientId = json.getString("clientId");
-
-                if (event.equals("connected")) {
-                    System.out.println("[Client] Client connected: " + clientId);
-                } else if (event.equals("disconnected")) {
-                    System.out.println("[Client] Client disconnected: " + clientId);
-                }
-            } else {
-                // 텍스트 메시지 처리
-                String senderId = json.getString("senderId");
-                String text = json.getString("text");
-
-                // 내가 보낸 메시지는 무시
-                if (senderId.equals(mySessionId)) {
-                    System.out.println("[Client] Ignored my own message.");
-                    return;
-                }
-
-                SwingUtilities.invokeLater(() -> {
-                    if (textArea != null) {
-                        try {
-                            // 👇 문서 리스너 일시 제거
-                            textArea.getDocument().removeDocumentListener(documentListener);
-                            textArea.setText(text);
-                        } finally {
-                            // 👇 문서 리스너 다시 추가
-                            textArea.getDocument().addDocumentListener(documentListener);
-                        }
-                    }
-                });
+    private static void sendCaretPosition() {
+        if (session != null && session.isOpen()) {
+            try {
+                int caret = textArea.getCaretPosition();
+                JSONObject json = new JSONObject();
+                json.put("type", "cursor");
+                json.put("senderId", mySessionId);
+                json.put("username", myUsername);
+                json.put("caret", caret);
+                session.getBasicRemote().sendText(json.toString());
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 
     private static void createAndShowGUI() {
         JFrame frame = new JFrame("Shared Text Editor");
         frame.setSize(600, 400);
-        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        layeredPane = new JLayeredPane();
+        layeredPane.setLayout(null);
 
         textArea = new JTextArea();
         JScrollPane scrollPane = new JScrollPane(textArea);
-
-        frame.add(scrollPane, BorderLayout.CENTER);
+        scrollPane.setBounds(0, 0, 580, 360);
+        layeredPane.add(scrollPane, JLayeredPane.DEFAULT_LAYER);
 
         documentListener = new DocumentListener() {
-            @Override
-            public void insertUpdate(DocumentEvent e) {
-                sendTextToServer();
-            }
-
-            @Override
-            public void removeUpdate(DocumentEvent e) {
-                sendTextToServer();
-            }
-
-            @Override
-            public void changedUpdate(DocumentEvent e) {
-                // 보통 스타일 변경
-            }
+            public void insertUpdate(DocumentEvent e) { sendTextToServer(); }
+            public void removeUpdate(DocumentEvent e) { sendTextToServer(); }
+            public void changedUpdate(DocumentEvent e) {}
         };
         textArea.getDocument().addDocumentListener(documentListener);
 
-
-        // 창 닫을 때 세션 끊기
-        frame.addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosing(WindowEvent e) {
-                if (session != null && session.isOpen()) {
-                    try {
-                        session.close();
-                        System.out.println("[Client] Disconnected from server (GUI closed).");
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                    }
-                }
-            }
-        });
-
+        frame.add(layeredPane);
         frame.setVisible(true);
+    }
+
+    private static void updateOtherCursors() {
+        // 기존 커서 제거
+        for (JLabel label : userCursors.values()) layeredPane.remove(label);
+        userCursors.clear();
+
+        for (Map.Entry<String, Integer> entry : userCaretPos.entrySet()) {
+            String senderId = entry.getKey();
+            int caret = entry.getValue();
+            String name = userNames.get(senderId);
+
+            try {
+                Rectangle rect = textArea.modelToView(caret);
+                if (rect == null) continue;
+
+                JLabel label = new JLabel("| " + name);
+                label.setForeground(Color.MAGENTA);
+                label.setBounds(rect.x + 5, rect.y, 100, rect.height);
+
+                layeredPane.add(label, JLayeredPane.PALETTE_LAYER);
+                userCursors.put(senderId, label);
+            } catch (Exception ignored) {}
+        }
+        layeredPane.repaint();
     }
 
     private static void sendTextToServer() {
@@ -154,9 +186,7 @@ public class TextEditorClient {
                 json.put("type", "text");
                 json.put("senderId", mySessionId);
                 json.put("text", currentText);
-
                 session.getBasicRemote().sendText(json.toString());
-                System.out.println("[Client] Sent updated text to server.");
             } catch (Exception e) {
                 e.printStackTrace();
             }
