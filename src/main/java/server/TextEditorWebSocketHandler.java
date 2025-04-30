@@ -14,38 +14,46 @@ public class TextEditorWebSocketHandler extends TextWebSocketHandler {
     private final Set<WebSocketSession> sessions = Collections.synchronizedSet(new HashSet<>());
 
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+    public void afterConnectionEstablished(WebSocketSession session) {
         sessions.add(session);
         System.out.println("[Server] Client connected: " + session.getId());
         broadcastSystemMessage(session.getId(), "connected");
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         sessions.remove(session);
         System.out.println("[Server] Client disconnected: " + session.getId());
         broadcastSystemMessage(session.getId(), "disconnected");
     }
 
     @Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
         System.out.println("[Server] Received message: " + message.getPayload());
-
-        for (WebSocketSession s : sessions) {
-            if (s.isOpen()) {
-                s.sendMessage(message); // 수정 필요 없음
-            }
-        }
-    }
-
-    // 시스템 메시지 브로드캐스트용 메소드 추가
-    private void broadcastSystemMessage(String clientId, String eventType) throws Exception {
-        String systemMessage = "{\"type\":\"system\",\"clientId\":\"" + clientId + "\",\"event\":\"" + eventType + "\"}";
 
         synchronized (sessions) {
             for (WebSocketSession s : sessions) {
                 if (s.isOpen()) {
-                    s.sendMessage(new TextMessage(systemMessage));
+                    try {
+                        s.sendMessage(message);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
+
+    private void broadcastSystemMessage(String clientId, String event) {
+        String json = String.format("{\"type\":\"system\",\"clientId\":\"%s\",\"event\":\"%s\"}", clientId, event);
+        synchronized (sessions) {
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen()) {
+                    try {
+                        s.sendMessage(new TextMessage(json));
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
             }
         }
