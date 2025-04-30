@@ -20,18 +20,7 @@ public class TextEditorClient {
     private static DocumentListener documentListener;
 
     public static void main(String[] args) {
-        WebSocketContainer container = ContainerProvider.getWebSocketContainer();
-        String serverUri = "ws://192.168.106.117:8080/ws/text-editor"; // 서버 주소
-
-        try {
-            session = container.connectToServer(TextEditorClient.class, URI.create(serverUri));
-            System.out.println("[Client] Connected to server!");
-
-            SwingUtilities.invokeLater(TextEditorClient::createAndShowGUI);
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        SwingUtilities.invokeLater(TextEditorClient::showLogInGUI);
     }
 
     @OnOpen
@@ -99,7 +88,51 @@ public class TextEditorClient {
         }
     }
 
-    private static void createAndShowGUI() {
+    private static void showLogInGUI() {
+        JFrame loginFrame = new JFrame("Login");
+        loginFrame.setSize(300, 150);
+        loginFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        loginFrame.setLayout(new BorderLayout());
+
+        JPanel panel = new JPanel(new BorderLayout());
+        JTextField userIdField = new JTextField();
+        JButton connectButton = new JButton("접속");
+
+        panel.add(new JLabel("사용자 ID: "), BorderLayout.WEST);
+        panel.add(userIdField, BorderLayout.CENTER);
+        loginFrame.add(panel, BorderLayout.NORTH);
+        loginFrame.add(connectButton, BorderLayout.SOUTH);
+
+        Runnable connectToServer = () -> {
+            String userId = userIdField.getText().trim();
+            if (userId.isEmpty()) {
+                JOptionPane.showMessageDialog(loginFrame, "ID를 입력하세요.");
+                return;
+            }
+
+            try {
+                WebSocketContainer container = ContainerProvider.getWebSocketContainer();
+                URI uri = new URI("ws://192.168.219.71:8080/ws/text-editor?userId=" + userId); // 사용자 ID 쿼리로 전달
+                session = container.connectToServer(TextEditorClient.class, uri);
+                System.out.println("[Client] Connected to server!");
+
+                loginFrame.dispose(); // 로그인 창 닫고
+                showTextEditorGUI(); // 에디터 창 열기
+            } catch (Exception e) {
+                JOptionPane.showMessageDialog(loginFrame, "서버에 접속할 수 없습니다.\n" + e.getMessage());
+                System.err.println("[Client] 서버 접속 실패: " + e.getMessage());
+            }
+        };
+
+        connectButton.addActionListener(e -> connectToServer.run());
+        userIdField.addActionListener(e -> connectToServer.run());
+
+        loginFrame.setLocationRelativeTo(null); // 중앙 정렬
+        loginFrame.setVisible(true);
+    }
+
+
+    private static void showTextEditorGUI() {
         JFrame frame = new JFrame("Shared Text Editor");
         frame.setSize(600, 400);
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
