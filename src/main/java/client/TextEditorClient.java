@@ -8,8 +8,6 @@ import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
 
 import org.json.JSONObject;
 
@@ -20,13 +18,6 @@ public class TextEditorClient {
     private static String mySessionId;
     private static String myUsername;
     private static DocumentListener documentListener;
-
-    // 사용자별 커서 표시용 맵
-    private static final Map<String, JLabel> userCursors = new HashMap<>();
-    private static final Map<String, Integer> userCaretPos = new HashMap<>();
-    private static final Map<String, String> userNames = new HashMap<>();
-
-    private static JLayeredPane layeredPane;
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(TextEditorClient::showLoginGUI);
@@ -54,7 +45,7 @@ public class TextEditorClient {
                 myUsername = userId;
                 try {
                     WebSocketContainer container = ContainerProvider.getWebSocketContainer();
-                    URI uri = new URI("ws://localhost:8080/ws/text-editor?userId=" + userId);
+                    URI uri = new URI("ws://192.168.235.66:8080/ws/text-editor?userId=" + userId);
                     session = container.connectToServer(TextEditorClient.class, uri);
                     loginFrame.dispose();
                 } catch (Exception ex) {
@@ -68,9 +59,6 @@ public class TextEditorClient {
     public void onOpen(Session session) {
         mySessionId = session.getId();
         SwingUtilities.invokeLater(TextEditorClient::createAndShowGUI);
-
-        // 커서 위치 전송 주기 설정
-        new Timer(300, e -> sendCaretPosition()).start();
     }
 
     @OnMessage
@@ -79,19 +67,7 @@ public class TextEditorClient {
             JSONObject json = new JSONObject(message);
             String type = json.optString("type", "text");
 
-            if (type.equals("cursor")) {
-                String senderId = json.getString("senderId");
-                if (senderId.equals(mySessionId)) return;
-
-                int caret = json.getInt("caret");
-                String name = json.getString("username");
-
-                userCaretPos.put(senderId, caret);
-                userNames.put(senderId, name);
-
-                SwingUtilities.invokeLater(() -> updateOtherCursors());
-
-            } else if (type.equals("text")) {
+            if (type.equals("text")) {
                 String senderId = json.getString("senderId");
                 if (senderId.equals(mySessionId)) return;
 
@@ -113,34 +89,13 @@ public class TextEditorClient {
         }
     }
 
-    private static void sendCaretPosition() {
-        if (session != null && session.isOpen()) {
-            try {
-                int caret = textArea.getCaretPosition();
-                JSONObject json = new JSONObject();
-                json.put("type", "cursor");
-                json.put("senderId", mySessionId);
-                json.put("username", myUsername);
-                json.put("caret", caret);
-                session.getBasicRemote().sendText(json.toString());
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
     private static void createAndShowGUI() {
         JFrame frame = new JFrame("Shared Text Editor");
         frame.setSize(600, 400);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        layeredPane = new JLayeredPane();
-        layeredPane.setLayout(null);
-
         textArea = new JTextArea();
         JScrollPane scrollPane = new JScrollPane(textArea);
-        scrollPane.setBounds(0, 0, 580, 360);
-        layeredPane.add(scrollPane, JLayeredPane.DEFAULT_LAYER);
 
         documentListener = new DocumentListener() {
             public void insertUpdate(DocumentEvent e) { sendTextToServer(); }
@@ -149,33 +104,8 @@ public class TextEditorClient {
         };
         textArea.getDocument().addDocumentListener(documentListener);
 
-        frame.add(layeredPane);
+        frame.add(scrollPane, BorderLayout.CENTER);
         frame.setVisible(true);
-    }
-
-    private static void updateOtherCursors() {
-        // 기존 커서 제거
-        for (JLabel label : userCursors.values()) layeredPane.remove(label);
-        userCursors.clear();
-
-        for (Map.Entry<String, Integer> entry : userCaretPos.entrySet()) {
-            String senderId = entry.getKey();
-            int caret = entry.getValue();
-            String name = userNames.get(senderId);
-
-            try {
-                Rectangle rect = textArea.modelToView(caret);
-                if (rect == null) continue;
-
-                JLabel label = new JLabel("| " + name);
-                label.setForeground(Color.MAGENTA);
-                label.setBounds(rect.x + 5, rect.y, 100, rect.height);
-
-                layeredPane.add(label, JLayeredPane.PALETTE_LAYER);
-                userCursors.put(senderId, label);
-            } catch (Exception ignored) {}
-        }
-        layeredPane.repaint();
     }
 
     private static void sendTextToServer() {

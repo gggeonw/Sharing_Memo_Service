@@ -14,48 +14,47 @@ public class TextEditorWebSocketHandler extends TextWebSocketHandler {
     private final Set<WebSocketSession> sessions = Collections.synchronizedSet(new HashSet<>());
 
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) {
+    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         sessions.add(session);
-        System.out.println("[Server] Client connected: " + session.getId());
-        broadcastSystemMessage(session.getId(), "connected");
+        String userId = getUserId(session);
+        System.out.println("[Server] Client connected: " + userId);
+        broadcastSystemMessage(userId, "connected");
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         sessions.remove(session);
-        System.out.println("[Server] Client disconnected: " + session.getId());
-        broadcastSystemMessage(session.getId(), "disconnected");
+        String userId = getUserId(session);
+        System.out.println("[Server] Client disconnected: " + userId);
+        broadcastSystemMessage(userId, "disconnected");
     }
 
     @Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         System.out.println("[Server] Received message: " + message.getPayload());
 
-        synchronized (sessions) {
-            for (WebSocketSession s : sessions) {
-                if (s.isOpen()) {
-                    try {
-                        s.sendMessage(message);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }
+        for (WebSocketSession s : sessions) {
+            if (s.isOpen()) {
+                s.sendMessage(message); // 메시지를 그대로 모든 세션에 전달
             }
         }
     }
 
-    private void broadcastSystemMessage(String clientId, String event) {
-        String json = String.format("{\"type\":\"system\",\"clientId\":\"%s\",\"event\":\"%s\"}", clientId, event);
-        synchronized (sessions) {
-            for (WebSocketSession s : sessions) {
-                if (s.isOpen()) {
-                    try {
-                        s.sendMessage(new TextMessage(json));
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }
+    private void broadcastSystemMessage(String userId, String event) throws Exception {
+        String systemMessage = String.format("{\"type\":\"system\",\"clientId\":\"%s\",\"event\":\"%s\"}", userId, event);
+
+        for (WebSocketSession s : sessions) {
+            if (s.isOpen()) {
+                s.sendMessage(new TextMessage(systemMessage));
             }
         }
+    }
+
+    private String getUserId(WebSocketSession session) {
+        String query = session.getUri().getQuery(); // e.g., userId=abc123
+        if (query != null && query.startsWith("userId=")) {
+            return query.substring("userId=".length());
+        }
+        return "unknown";
     }
 }
